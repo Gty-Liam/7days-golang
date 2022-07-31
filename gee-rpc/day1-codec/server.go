@@ -22,6 +22,7 @@ type Option struct {
 	CodecType   codec.Type // client may choose different Codec to encode body
 }
 
+// DefaultOption 自主定义的解析协议
 var DefaultOption = &Option{
 	MagicNumber: MagicNumber,
 	CodecType:   codec.GobType,
@@ -40,9 +41,12 @@ var DefaultServer = NewServer()
 
 // ServeConn runs the server on a single connection.
 // ServeConn blocks, serving the connection until the client hangs up.
+// 为了实现上更简单，GeeRPC 客户端固定采用 JSON 编码 Option，后续的 header 和 body 的编码方式由 Option 中的 CodeType 指定
+// io.ReadWriteCloser 就是一个具体的连接
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 	defer func() { _ = conn.Close() }()
 	var opt Option
+	// 将请求中的opt数据解析出来放到opt对象中
 	if err := json.NewDecoder(conn).Decode(&opt); err != nil {
 		log.Println("rpc server: options error: ", err)
 		return
@@ -51,6 +55,7 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 		log.Printf("rpc server: invalid magic number %x", opt.MagicNumber)
 		return
 	}
+	// 根据请求体编码的类型，取出对应的解码器
 	f := codec.NewCodecFuncMap[opt.CodecType]
 	if f == nil {
 		log.Printf("rpc server: invalid codec type %s", opt.CodecType)
@@ -90,7 +95,7 @@ type request struct {
 
 func (server *Server) readRequestHeader(cc codec.Codec) (*codec.Header, error) {
 	var h codec.Header
-	if err := cc.ReadHeader(&h); err != nil {
+	if err := cc.ReadHeader(&h); err != nil { // 数据是从哪来？
 		if err != io.EOF && err != io.ErrUnexpectedEOF {
 			log.Println("rpc server: read header error:", err)
 		}

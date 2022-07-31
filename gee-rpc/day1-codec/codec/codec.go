@@ -10,11 +10,12 @@ type Header struct {
 	Error         string
 }
 
+// 抽象出对消息体进行编解码
 type Codec interface {
 	io.Closer
-	ReadHeader(*Header) error
-	ReadBody(interface{}) error
-	Write(*Header, interface{}) error
+	ReadHeader(*Header) error         // 反序列化
+	ReadBody(interface{}) error       // 反序列化
+	Write(*Header, interface{}) error // 序列化
 }
 
 type NewCodecFunc func(io.ReadWriteCloser) Codec
