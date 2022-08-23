@@ -40,8 +40,10 @@ func main() {
 			ServiceMethod: "Foo.Sum",
 			Seq:           uint64(i),
 		}
+		// head, body
 		_ = cc.Write(h, fmt.Sprintf("geerpc req %d", h.Seq))
-		_ = cc.ReadHeader(h)
+		var header *codec.Header
+		_ = cc.ReadHeader(header)
 		var reply string
 		_ = cc.ReadBody(&reply)
 		log.Println("reply:", reply)
