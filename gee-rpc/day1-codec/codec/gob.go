@@ -22,7 +22,7 @@ func NewGobCodec(conn io.ReadWriteCloser) Codec {
 		conn: conn,
 		buf:  buf,
 		dec:  gob.NewDecoder(conn), // 从conn中读取
-		enc:  gob.NewEncoder(buf),  // 写到buf中
+		enc:  gob.NewEncoder(conn), // 写到buf中
 	}
 }
 

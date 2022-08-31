@@ -41,9 +41,11 @@ var DefaultServer = NewServer()
 
 // ServeConn runs the server on a single connection.
 // ServeConn blocks, serving the connection until the client hangs up.
+// 解析header，选择解码器解码
 // 为了实现上更简单，GeeRPC 客户端固定采用 JSON 编码 Option，后续的 header 和 body 的编码方式由 Option 中的 CodeType 指定
 // io.ReadWriteCloser 就是一个具体的连接
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
+	log.Printf("开始处理连接..., conn:%+v", conn)
 	defer func() { _ = conn.Close() }()
 	var opt Option
 	// 将请求中的opt数据解析出来放到opt对象中
@@ -62,6 +64,7 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 		return
 	}
 	server.serveCodec(f(conn))
+	log.Printf("处理连接结束...conn:%+v", conn)
 }
 
 // invalidRequest is a placeholder for response argv when error occurs
@@ -71,16 +74,18 @@ func (server *Server) serveCodec(cc codec.Codec) {
 	sending := new(sync.Mutex) // make sure to send a complete response
 	wg := new(sync.WaitGroup)  // wait until all request are handled
 	for {
+		// 从conn读数据到h和body
 		req, err := server.readRequest(cc)
 		if err != nil {
 			if req == nil {
 				break // it's not possible to recover, so close the connection
 			}
-			req.h.Error = err.Error()
+			req.h.Error = err.Error() // err写到header里
 			server.sendResponse(cc, req.h, invalidRequest, sending)
 			continue
 		}
 		wg.Add(1)
+		// 拿到req，做业务处理
 		go server.handleRequest(cc, req, sending, wg)
 	}
 	wg.Wait()
@@ -95,6 +100,7 @@ type request struct {
 
 func (server *Server) readRequestHeader(cc codec.Codec) (*codec.Header, error) {
 	var h codec.Header
+	// 从conn中读取写到h中
 	if err := cc.ReadHeader(&h); err != nil { // 数据是从哪来？
 		if err != io.EOF && err != io.ErrUnexpectedEOF {
 			log.Println("rpc server: read header error:", err)
@@ -116,6 +122,7 @@ func (server *Server) readRequest(cc codec.Codec) (*request, error) {
 	if err = cc.ReadBody(req.argv.Interface()); err != nil {
 		log.Println("rpc server: read argv err:", err)
 	}
+	log.Printf("readRequest 从连接中解析出req: %+v", req)
 	return req, nil
 }
 
@@ -131,9 +138,9 @@ func (server *Server) handleRequest(cc codec.Codec, req *request, sending *sync.
 	// TODO, should call registered rpc methods to get the right replyv
 	// day 1, just print argv and send a hello message
 	defer wg.Done()
-	log.Println(req.h, req.argv.Elem())
-	req.replyv = reflect.ValueOf(fmt.Sprintf("geerpc resp %d", req.h.Seq))
-	server.sendResponse(cc, req.h, req.replyv.Interface(), sending)
+	log.Printf("handleRequest，这里处理业务需求... %v, %v", req.h, req.argv.Elem())
+	req.replyv = reflect.ValueOf(fmt.Sprintf("I get your req, seq: %d", req.h.Seq))
+	server.sendResponse(cc, req.h, req.replyv.Interface(), sending) // 写入到response
 }
 
 // Accept accepts connections on the listener and serves requests
@@ -141,6 +148,7 @@ func (server *Server) handleRequest(cc codec.Codec, req *request, sending *sync.
 func (server *Server) Accept(lis net.Listener) {
 	for {
 		conn, err := lis.Accept()
+		log.Println("service: 与client建立连接")
 		if err != nil {
 			log.Println("rpc server: accept error:", err)
 			return

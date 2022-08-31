@@ -15,7 +15,7 @@ type Codec interface {
 	io.Closer
 	ReadHeader(*Header) error         // 反序列化
 	ReadBody(interface{}) error       // 反序列化
-	Write(*Header, interface{}) error // 序列化
+	Write(*Header, interface{}) error // 将header和body序列化到buf
 }
 
 type NewCodecFunc func(io.ReadWriteCloser) Codec
