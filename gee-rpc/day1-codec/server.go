@@ -45,14 +45,16 @@ var DefaultServer = NewServer()
 // 为了实现上更简单，GeeRPC 客户端固定采用 JSON 编码 Option，后续的 header 和 body 的编码方式由 Option 中的 CodeType 指定
 // io.ReadWriteCloser 就是一个具体的连接
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
-	log.Printf("开始处理连接..., conn:%+v", conn)
+	log.Printf("server: 开始处理连接..., conn:%+v", conn)
 	defer func() { _ = conn.Close() }()
 	var opt Option
 	// 将请求中的opt数据解析出来放到opt对象中
-	if err := json.NewDecoder(conn).Decode(&opt); err != nil {
+	log.Printf("server: 开始解析opt...")
+	if err := json.NewDecoder(conn).Decode(&opt); err != nil { // 客户端cc.Write的时候才会执行
 		log.Println("rpc server: options error: ", err)
 		return
 	}
+	log.Printf("server: 解析opt结束")
 	if opt.MagicNumber != MagicNumber {
 		log.Printf("rpc server: invalid magic number %x", opt.MagicNumber)
 		return
@@ -63,6 +65,7 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 		log.Printf("rpc server: invalid codec type %s", opt.CodecType)
 		return
 	}
+	log.Printf("开始解析req")
 	server.serveCodec(f(conn))
 	log.Printf("处理连接结束...conn:%+v", conn)
 }
@@ -75,7 +78,9 @@ func (server *Server) serveCodec(cc codec.Codec) {
 	wg := new(sync.WaitGroup)  // wait until all request are handled
 	for {
 		// 从conn读数据到h和body
+		log.Printf("server: read request")
 		req, err := server.readRequest(cc)
+		log.Printf("server: read request finish")
 		if err != nil {
 			if req == nil {
 				break // it's not possible to recover, so close the connection
@@ -141,6 +146,7 @@ func (server *Server) handleRequest(cc codec.Codec, req *request, sending *sync.
 	log.Printf("handleRequest，这里处理业务需求... %v, %v", req.h, req.argv.Elem())
 	req.replyv = reflect.ValueOf(fmt.Sprintf("I get your req, seq: %d", req.h.Seq))
 	server.sendResponse(cc, req.h, req.replyv.Interface(), sending) // 写入到response
+	log.Printf("handleRequest finish - 已经处理完业务，写response")
 }
 
 // Accept accepts connections on the listener and serves requests
