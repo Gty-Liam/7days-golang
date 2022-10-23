@@ -76,7 +76,7 @@ var invalidRequest = struct{}{}
 func (server *Server) serveCodec(cc codec.Codec) {
 	sending := new(sync.Mutex) // make sure to send a complete response
 	wg := new(sync.WaitGroup)  // wait until all request are handled
-	for {
+	for {                      // 之前提到过，在一次连接中，允许接收多个请求，即多个 request header 和 request body，因此这里使用了 for 无限制地等待请求的到来，直到发生错误
 		// 从conn读数据到h和body
 		log.Printf("server: read request")
 		req, err := server.readRequest(cc)

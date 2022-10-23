@@ -16,6 +16,7 @@ import (
 )
 
 // Call represents an active RPC.
+// 一个Call实例可以理解为一次rpc的请求？
 type Call struct {
 	Seq           uint64
 	ServiceMethod string      // format "<service>.<method>"
@@ -40,9 +41,9 @@ type Client struct {
 	header   codec.Header
 	mu       sync.Mutex // protect following
 	seq      uint64
-	pending  map[uint64]*Call
-	closing  bool // user has called Close
-	shutdown bool // server has told us to stop
+	pending  map[uint64]*Call // 存储未处理完的请求，key是编号，value是 Call 实例。
+	closing  bool             // user has called Close
+	shutdown bool             // server has told us to stop
 }
 
 var _ io.Closer = (*Client)(nil)
@@ -74,7 +75,7 @@ func (client *Client) registerCall(call *Call) (uint64, error) {
 		return 0, ErrShutdown
 	}
 	call.Seq = client.seq
-	client.pending[call.Seq] = call
+	client.pending[call.Seq] = call // 储存未处理的请求
 	client.seq++
 	return call.Seq, nil
 }
@@ -99,13 +100,16 @@ func (client *Client) terminateCalls(err error) {
 	}
 }
 
+// 1. 注册此次请求
+// 2. 发送此次请求
 func (client *Client) send(call *Call) {
 	// make sure that the client will send a complete request
+	// 上锁
 	client.sending.Lock()
 	defer client.sending.Unlock()
 
 	// register this call.
-	seq, err := client.registerCall(call)
+	seq, err := client.registerCall(call) // 将此次rpc请求登记为<未处理完成>的请求
 	if err != nil {
 		call.Error = err
 		call.done()
@@ -118,8 +122,9 @@ func (client *Client) send(call *Call) {
 	client.header.Error = ""
 
 	// encode and send the request
-	if err := client.cc.Write(&client.header, call.Args); err != nil {
-		call := client.removeCall(seq)
+	// cc在client初始化的时候，已经绑定了conn
+	if err := client.cc.Write(&client.header, call.Args); err != nil { // 发送请求
+		call := client.removeCall(seq) // 从<未完成请求>列表中删除此次请求
 		// call may be nil, it usually means that Write partially failed,
 		// client has received the response and handled
 		if call != nil {
@@ -160,6 +165,7 @@ func (client *Client) receive() {
 
 // Go invokes the function asynchronously.
 // It returns the Call structure representing the invocation.
+// 异步远程调用
 func (client *Client) Go(serviceMethod string, args, reply interface{}, done chan *Call) *Call {
 	if done == nil {
 		done = make(chan *Call, 10)
@@ -178,6 +184,7 @@ func (client *Client) Go(serviceMethod string, args, reply interface{}, done cha
 
 // Call invokes the named function, waits for it to complete,
 // and returns its error status.
+// 调用指定的方法
 func (client *Client) Call(serviceMethod string, args, reply interface{}) error {
 	call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
 	return call.Error
@@ -207,7 +214,8 @@ func NewClient(conn net.Conn, opt *Option) (*Client, error) {
 		return nil, err
 	}
 	// send options with server
-	if err := json.NewEncoder(conn).Encode(opt); err != nil {
+	// 将opt序列化为Json内容再写到conn中
+	if err := json.NewEncoder(conn).Encode(opt); err != nil { // 约定option是以Json编码
 		log.Println("rpc client: options error: ", err)
 		_ = conn.Close()
 		return nil, err
@@ -215,6 +223,7 @@ func NewClient(conn net.Conn, opt *Option) (*Client, error) {
 	return newClientCodec(f(conn), opt), nil
 }
 
+// 设置编码器和约定的通讯的编码方式获得客户端
 func newClientCodec(cc codec.Codec, opt *Option) *Client {
 	client := &Client{
 		seq:     1, // seq starts with 1, 0 means invalid call
@@ -222,17 +231,18 @@ func newClientCodec(cc codec.Codec, opt *Option) *Client {
 		opt:     opt,
 		pending: make(map[uint64]*Call),
 	}
-	go client.receive()
+	go client.receive() // 死循环，接收应答
 	return client
 }
 
 // Dial connects to an RPC server at the specified network address
+// 与RPC服务器建立连接 并 开启客户端持续接受客户端的响应
 func Dial(network, address string, opts ...*Option) (client *Client, err error) {
 	opt, err := parseOptions(opts...)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.Dial(network, address)
+	conn, err := net.Dial(network, address) // 与目标服务器IP创建🔗？
 	if err != nil {
 		return nil, err
 	}

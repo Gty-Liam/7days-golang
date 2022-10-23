@@ -36,15 +36,18 @@ func (c *GobCodec) ReadBody(body interface{}) error {
 
 func (c *GobCodec) Write(h *Header, body interface{}) (err error) {
 	defer func() {
+		// 将buffer的内容传输
 		_ = c.buf.Flush()
 		if err != nil {
 			_ = c.Close()
 		}
 	}()
+	// 传输header
 	if err = c.enc.Encode(h); err != nil {
 		log.Println("rpc: gob error encoding header:", err)
 		return
 	}
+	// 传输body
 	if err = c.enc.Encode(body); err != nil {
 		log.Println("rpc: gob error encoding body:", err)
 		return
