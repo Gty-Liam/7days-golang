@@ -43,13 +43,14 @@ type ITableName interface {
 
 // Parse a struct to a Schema instance
 func Parse(dest interface{}, d dialect.Dialect) *Schema {
+	// 因为设计的入参是一个对象的指针，因此需要 reflect.Indirect() 获取指针指向的实例
 	modelType := reflect.Indirect(reflect.ValueOf(dest)).Type()
 	var tableName string
 	t, ok := dest.(ITableName)
-	if !ok {
-		tableName = modelType.Name()
+	if !ok { // 判断他是否实现了接口
+		tableName = modelType.Name() // 如果用户没有自定义TableName，则以类名做为表名
 	} else {
-		tableName = t.TableName()
+		tableName = t.TableName() // 如果实现了就获取用户自定义的TableName
 	}
 	schema := &Schema{
 		Model:    dest,
@@ -57,11 +58,12 @@ func Parse(dest interface{}, d dialect.Dialect) *Schema {
 		fieldMap: make(map[string]*Field),
 	}
 
+	// 遍历实例的所有字段
 	for i := 0; i < modelType.NumField(); i++ {
 		p := modelType.Field(i)
-		if !p.Anonymous && ast.IsExported(p.Name) {
+		if !p.Anonymous && ast.IsExported(p.Name) { // 是否是匿名变量(父类的成员变量)，或是 私有变量
 			field := &Field{
-				Name: p.Name,
+				Name: p.Name, // 字段名
 				Type: d.DataTypeOf(reflect.Indirect(reflect.New(p.Type))),
 			}
 			if v, ok := p.Tag.Lookup("geeorm"); ok {
